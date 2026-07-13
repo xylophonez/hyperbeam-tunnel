@@ -1,0 +1,10 @@
+{
+  "port": 9080,
+  "wallet": "broker-wallet.json",
+  "store": [
+    {
+      "store-module": "hb_store_volatile",
+      "name": "tunnel-broker-store"
+    }
+  ]
+}

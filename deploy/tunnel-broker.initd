@@ -1,0 +1,25 @@
+#!/sbin/openrc-run
+# OpenRC service for the AndEE reverse HTTP tunnel broker.
+
+name="tunnel-broker"
+description="AndEE reverse HTTP tunnel broker"
+
+: "${broker_dir:=/opt/tunnel-broker}"
+: "${broker_runtime:=${broker_dir}/runtime}"
+: "${broker_config:=${broker_dir}/config/broker.json}"
+: "${broker_user:=tunnel}"
+
+command="${broker_dir}/run.sh"
+command_background="yes"
+pidfile="/run/${name}.pid"
+output_log="/var/log/${name}.log"
+error_log="/var/log/${name}.log"
+start_stop_daemon_args="--user ${broker_user} \
+    --env HB_RUNTIME=${broker_runtime} \
+    --env BROKER_CONFIG=${broker_config} \
+    --chdir ${broker_dir}"
+
+depend() {
+    need net
+    after firewall
+}

@@ -1,0 +1,35 @@
+# Wildcard TLS termination + reverse proxy for a self-hosted tunnel broker.
+#
+# Every tunnelled node is reachable at https://<address-base32>.tunnel.example.com,
+# so the broker needs a wildcard certificate. Caddy obtains one automatically
+# via a DNS-01 ACME challenge (HTTP-01 cannot satisfy wildcards).
+#
+# Prerequisites:
+#   1. A wildcard DNS A/AAAA record:  *.tunnel.example.com  ->  <this host>
+#   2. A Caddy build with your DNS provider plugin, e.g.:
+#        xcaddy build --with github.com/caddy-dns/cloudflare
+#   3. An API token for that provider (least privilege: edit this zone only).
+#
+# Replace tunnel.example.com, the dns provider, and the token below.
+
+*.tunnel.example.com {
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+
+	# The broker relays bodies of arbitrary size (HTML, JS bundles, images),
+	# and holds long-poll registrations open for ~45s. Give it room.
+	reverse_proxy 127.0.0.1:9080 {
+		flush_interval -1
+		transport http {
+			read_timeout 120s
+			write_timeout 120s
+			dial_timeout 5s
+		}
+	}
+}
+
+# Optional: a bare apex for a status page / landing, not required by the broker.
+# tunnel.example.com {
+# 	respond "AndEE tunnel broker" 200
+# }

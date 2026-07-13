@@ -1,0 +1,24 @@
+[Unit]
+Description=AndEE reverse HTTP tunnel broker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust User/paths to your install.
+User=tunnel
+Group=tunnel
+WorkingDirectory=/opt/tunnel-broker
+Environment=HB_RUNTIME=/opt/tunnel-broker/runtime
+Environment=BROKER_CONFIG=/opt/tunnel-broker/config/broker.json
+ExecStart=/opt/tunnel-broker/run.sh
+Restart=on-failure
+RestartSec=3
+# The broker holds a persistent wallet and (optionally) a disk store here.
+ReadWritePaths=/opt/tunnel-broker
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
