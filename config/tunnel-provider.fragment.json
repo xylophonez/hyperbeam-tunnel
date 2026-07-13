@@ -1,5 +1,5 @@
 {
-  "_note": "MERGE these keys into your node/LapEE config (e.g. bundler config); do not use as a standalone file. See config/README.md. Replace <published-tunnel-impl-id> with the pinned tunnel@1.0 implementation ID.",
+  "_note": "MERGE these keys into your node/LapEE config (e.g. bundler config); do not use as a standalone file. See config/README.md. The tunnel@1.0 pin is the published Arweave impl dataitem ID (spec: KVCqwfsDMVQKbKJcVlba_LRxNN92uxAxvzThzORdhxE).",
   "on": {
     "request": [
       {
@@ -9,6 +9,6 @@
     ]
   },
   "trusted-devices": {
-    "tunnel@1.0": "<published-tunnel-impl-id>"
+    "tunnel@1.0": "u3K9cV05p14IZ_t0dWTptuu87J1NT-LhgirldS9SsVM"
   }
 }
