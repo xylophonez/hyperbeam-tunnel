@@ -32,8 +32,6 @@ relayed response is byte-identical to a direct request — for a 307 redirect, a
 ALL MATCH -- base node + tunnel device + config = broker
 ```
 
-`src/tunnel_broker.erl` in this repo is only for running the broker *outside* a
-LapEE (bare `erl` on a generic host). Inside a LapEE the appliance's own
 bootstrap starts the node from config, so the launcher is unnecessary.
 
 ## What is device, what is config, what is neither
@@ -65,7 +63,7 @@ not specific to tunnelling.
    │ edge:    │   │ companion box  │        │ LapEE               │
    │ VPS fwd  │──▶│ Caddy: wildcard│───────▶│ HyperBEAM broker    │
    │  OR home │   │ TLS terminate  │ cleartext  (tunnel@1.0       │
-   │ public IP│   │ (*.tunnel.dom) │  :9080 │   + provider cfg) │
+   │ public IP│   │ (*.tunnel.dom) │  :8734 │   + provider cfg) │
    └──────────┘   └────────────────┘        └──────────┬──────────┘
                                                         │ long-poll
                                             ┌───────────┴──────────┐

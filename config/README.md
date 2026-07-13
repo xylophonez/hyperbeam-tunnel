@@ -9,10 +9,9 @@ This is the same overlay merge a LapEE/AndEE already performs for operator confi
 (`on` hooks are concatenated, `trusted-devices` maps are combined). The files here
 document exactly which keys to add.
 
-> Running the broker *outside* a LapEE (a bare `erl` process on a generic host)
-> is the only case that uses a whole standalone file — see `../standalone/` and
-> `../src/tunnel_broker.erl`. That path is not LapEE-native and exists only for
-> convenience.
+> These fragments are always merged into an existing node config. There is no
+> standalone config file and no launcher — a PermawebOS node boots the broker
+> from its own merged config.
 
 ## `tunnel-provider.fragment.json` — make a node a broker
 

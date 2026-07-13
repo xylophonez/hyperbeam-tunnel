@@ -1,15 +1,26 @@
-# Deploying on a VPS with a Namecheap domain (real recipe)
+# The public edge: wildcard TLS + reaching the internet (Namecheap recipe)
 
-This is the exact path used to stand up `tunnel.permaweb.space` on a Debian 13
-Vultr box. It uses Docker for both the broker and Caddy so nothing but Docker is
-installed on the host.
+The **provider node** (an AndEE/LapEE, or any HyperBEAM node with `tunnel@1.0`)
+runs the broker itself and serves **cleartext**. This document is only the *edge*
+around it: a companion running Caddy that terminates wildcard TLS, plus the DNS
+and firewall to put public traffic onto it. Nothing here runs a broker — the node
+does that (see the repo README + `config/`).
+
+Concrete values below are from the `tunnel.permaweb.space` bring-up on a Debian 13
+box; adapt the domain, IP and node address.
 
 ## 0. Namecheap API
 
-Enable API access (Profile → Tools → API Access) and **whitelist the VPS public
-IP**. Namecheap checks the *source* IP of every call, so the API only works from
-the whitelisted host — run Caddy (which drives the DNS-01 challenge) on that
-same VPS. You need: API user, API key, and the whitelisted IP.
+Enable API access (Profile → Tools → API Access) and **whitelist the public IP of
+the box that runs Caddy** (the edge box). Namecheap checks the *source* IP of
+every call, so the DNS-01 challenge only works from the whitelisted host. You
+need: API user, API key, and that IP.
+
+> Two topologies. **Simplest:** Caddy and the node on the same box (what the
+> `tunnel.permaweb.space` bring-up did) — forward to `127.0.0.1:<node-port>`.
+> **LapEE-native:** Caddy on a LAN companion / VPS edge, forwarding to a separate
+> node; the edge must be able to reach the node's cleartext port (same LAN, or a
+> VPN if the edge is a remote VPS). Whitelist whichever box runs Caddy.
 
 ## 1. DNS records (Namecheap API, BasicDNS)
 
@@ -24,28 +35,13 @@ apex peer `https://tunnel.<domain>`, and public traffic arrives at
 `<b32>.tunnel.<domain>` — a wildcard cert/label does NOT cover the bare apex, so
 you need both or the node's registration handshake fails with a TLS alert.
 
-## 2. Broker
+## 2. The provider node
 
-Ship the HyperBEAM runtime (BEAM libs + NIFs + preloaded store) and the three
-compiled broker beams (`dev_tunnel`, `dev_tunnel_server`, `tunnel_broker`).
-**BEAM bytecode is architecture-independent** — compile once (e.g. in the
-erlang:28.5 container) and copy the .beam files; only the NIF `.so`s are native,
-and those come from a Linux/glibc build (NOT the Android runtime in an APK).
-
-Run it under Docker with the preloaded store wired in:
-
-    docker run -d --name tunnel-broker --network host \
-      -v /opt/tunnel-broker:/opt/tunnel-broker -w /opt/tunnel-broker \
-      -e HB_PRELOADED_STORE=/opt/tunnel-broker/runtime/store/preloaded-store \
-      -e HB_PRELOADED_DEVICES_INDEX=<index-id> \
-      erlang:28.5 erl -noshell \
-        $(for d in runtime/lib/*/ebin; do printf -- '-pa /opt/tunnel-broker/%s ' $d; done) \
-        -pa /opt/tunnel-broker/ebin \
-        -eval 'tunnel_broker:start(<<"standalone/broker.json">>), receive stop -> ok end.'
-
-`deploy/tunnel-broker.service` wraps this as systemd. The broker listens on
-`127.0.0.1:9080` (or your configured port); keep it on loopback and let Caddy
-face the internet.
+The broker is your PermawebOS node — an AndEE/LapEE with the `tunnel@1.0` device
+and the provider config merged in (see the repo README and `config/`). It serves
+cleartext HTTP on its LAN address (e.g. `http://<node-lan-ip>:8734`). Caddy on the
+companion box forwards to that address; point `reverse_proxy` at it below. There
+is no separate broker process to run on the edge box.
 
 ## 3. Caddy with the Namecheap DNS plugin
 
@@ -69,7 +65,7 @@ Caddyfile (cover apex AND wildcard in ONE block so both get the SAN):
             }
             resolvers 1.1.1.1
         }
-        reverse_proxy 127.0.0.1:9080 {
+        reverse_proxy http://<node-lan-ip>:8734 {
             flush_interval -1          # stream bodies, don't buffer
             transport http { read_timeout 120s  write_timeout 120s  dial_timeout 5s }
         }

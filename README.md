@@ -1,283 +1,149 @@
-# tunnel-broker
+# hyperbeam-tunnel
 
-A self-hostable reverse HTTP tunnel broker for HyperBEAM nodes.
-
-Run this on a machine with a public IP and a wildcard domain, and any HyperBEAM
-node — behind NAT, on mobile data, roaming between networks — becomes reachable
-at a stable public URL derived from its own address:
+A reverse HTTP tunnel for HyperBEAM / PermawebOS nodes, shipped as a single
+device: **`tunnel@1.0`**. Add the device to a node's device package and merge a
+few keys into its config, and that node can either **publish itself** at a stable
+public URL while behind NAT, or **act as the tunnel provider** for others.
 
 ```
 https://<node-address-base32>.tunnel.example.com/~hyperbuddy@1.0/index
 ```
 
-The node holds long-poll registrations outbound to the broker, so it needs no
-inbound ports, no port forwarding, and no static IP.
+**Responses are byte-for-byte identical to hitting the node directly** — status
+codes, redirects, content types, and bodies of any size all survive the hop
+(verified for a 307 redirect, a 2.3 KB page, and a 4.2 MB JS bundle; see
+[Verifying](#verifying)).
 
-**Responses are byte-for-byte identical to hitting the node directly.** Status
-codes, redirects, content types and bodies of any size all survive the hop —
-verified against a direct LAN request for every path, including a 4.2 MB
-JavaScript bundle and a 307 redirect (see [Verifying](#verifying)).
+## Device + config, nothing else
 
-## Two ways to run — pick one
+The tunnel is not a bespoke server. It is the `tunnel@1.0` device plus config,
+running on a **stock** HyperBEAM node. This is proven — `test/stock_broker_proof.erl`
+starts a broker from a stock `hb_http_server:start_node/1` with only the device
+(from the device package) and an `on/request` config hook, and gets full parity.
 
-The broker is not a bespoke server. It is a stock HyperBEAM node plus the
-`tunnel@1.0` device and a one-line `on/request` config hook. So there are two
-deployments, and they do **not** share a config file:
+Because it is device + config on the shared HyperBEAM base, **what you prove on
+one PermawebOS target you inherit on the others**: prove it on an
+[AndEE](https://permawebos.arweave.net) phone (fast to iterate with `adb`) and a
+[LapEE](https://permawebos.arweave.net/run) laptop appliance inherits the exact
+same device 1:1. A LapEE tunnel provider is the intended production form — a
+hardened, attested appliance, so the provider is not a weaker trust link than the
+nodes it fronts. See **[LAPEE.md](LAPEE.md)**.
 
-1. **Inside a LapEE / an existing HyperBEAM node (recommended, LapEE-native).**
-   You add the `tunnel@1.0` device to the node's device package and **merge a few
-   keys into the node's own config** (e.g. append them to a bundler config). There
-   is no separate config file and no launcher — the appliance's own bootstrap runs
-   it. This is the production form: a [LapEE](https://permawebos.arweave.net/run)
-   (hardened, attested PermawebOS appliance) as the tunnel provider, so the
-   provider is not a weaker trust link than the nodes it fronts. See
-   **[config/README.md](config/README.md)** for the exact keys to merge and a
-   worked bundler example, and **[LAPEE.md](LAPEE.md)** for the proof
-   (`test/stock_broker_proof.erl`) and topology (LapEE broker + a companion box
-   terminating TLS + a thin edge).
+## Two roles, both pure config
 
-2. **Standalone, outside a LapEE (convenience).** A bare `erl` process driven by
-   `src/tunnel_broker.erl` + `standalone/broker.json`. This is the only path that
-   uses a whole standalone config file (with launcher keys like `port`/`wallet`/
-   `store` that a LapEE would otherwise supply). The rest of this README covers it.
+Add `tunnel@1.0` to the node's device package, then **merge** the relevant keys
+into the node's own config (e.g. append to a bundler config — this is the same
+overlay merge PermawebOS already does; you do **not** ship a separate config
+file). The exact keys and a worked bundler example are in
+**[config/README.md](config/README.md)**.
 
-Both run the identical `tunnel@1.0` device; only the way it is launched differs.
-
-## Why you might want your own
-
-Anyone can point a node at a public broker, and there is no reason that has to
-be someone else's. Running your own gives you:
-
-- **Your own domain**, so your nodes' public URLs are yours.
-- **Full HTTP fidelity.** Some brokers can only carry a small response body and
-  silently drop status codes and headers — redirects break, MIME types vanish,
-  and real pages never arrive. This one relays the complete HTTP response.
-- **No third-party dependency** in the path between the public internet and
-  your node, and no third party seeing that traffic.
-- **Operational control** — your logs, your rate limits, your uptime.
+- **Provider (broker):** `config/tunnel-provider.fragment.json` — an `on/request`
+  hook + a `trusted-devices` pin. The node routes public traffic for
+  `<b32>.<domain>` to whichever node registered that address. It coexists with an
+  existing `on/request` hook such as `manifest@1.0` (proven in
+  `test/merge_proof.erl`).
+- **Client (publish yourself):** `config/tunnel-client.fragment.json` — an
+  `on/start` hook that dials a provider on boot with a worker count.
 
 ## How it works
 
 ```
-   public client                broker (this)                 your node
+   public client                provider (broker)             your node
         │                            │                            │
         │                            │◀── POST /~tunnel@1.0/register (long poll)
-        │                            │      held open until work exists
-        │                            │                            │
-        │── GET https://<b32>.you ──▶│                            │
-        │   (Host names the node)    │── returns the request ────▶│
-        │                            │                            │ executes it
-        │                            │                            │ against its
-        │                            │                            │ own listener
-        │                            │◀── POST /~tunnel@1.0/response
-        │◀── full HTTP response ─────│    (status + headers + body)
+        │── GET https://<b32>.you ──▶│── returns the request ────▶│ executes it
+        │   (Host names the node)    │                            │ locally
+        │◀── full HTTP response ─────│◀── POST /~tunnel@1.0/response
 ```
 
-The first DNS label of the Host header is the node's 32-byte address in
-base32 (52 chars, lowercase). The broker decodes it, matches it to a live
-registration, and relays. A `node-<b32>.…` prefix is also accepted.
+The first DNS label of the Host header is the node's 32-byte address in base32
+(52 chars, lowercase); the provider decodes it, matches a live registration, and
+relays. Routing lives in the device, so the TLS edge in front is a dumb pipe.
 
-### The wire protocol, and why it looks like this
+### The wire protocol, briefly
 
-Two design choices are load-bearing, both learned the hard way:
+Both the forwarded request and the returned response are **inlined** as flat
+scalar keys, not nested sub-messages. A nested sub-message is turned into a
+content-addressed *link* by the HTTP codec, and that link does not survive the hop
+to another machine (`necessary_message_not_found`). Inlined scalars have no such
+indirection — this is what makes redirects, content types, and large bodies work
+across a real network. A `tunnel-mode: envelope` marker lets a capable provider
+signal full-envelope support; a node falls back to a plain body against a provider
+that cannot, so one node works against either.
 
-1. **The forwarded request is inlined** into the top level of the work message
-   (its `path`, `method` and scalar headers become top-level keys) rather than
-   nested under a `request` key. A nested sub-message is turned into a
-   content-addressed *link* by the HTTP codec, and that link does not survive
-   the hop to a different machine — the receiver fails with
-   `necessary_message_not_found`. Inlined scalars have no such indirection.
+## The public edge (TLS + reaching the internet)
 
-2. **The response is inlined the same way**, announced by
-   `tunnel-response: envelope`, carrying `status`, `body` and a JSON
-   `tunnel-headers` map. This is what preserves redirects, content types and
-   large bodies end to end.
+HyperBEAM serves **cleartext** (`cowboy:start_clear`); it does not terminate
+public HTTPS or issue certificates. So public exposure is handled *beside* the
+node, which keeps a hardened appliance out of the cert business:
 
-A `tunnel-mode: envelope` marker in the work message tells the node this broker
-can ingest a full envelope. Brokers that cannot simply never set it, and nodes
-fall back to returning a plain body — so a node speaking this protocol still
-works against a less capable broker.
+1. A **companion box on the LAN** runs Caddy (`Caddyfile` here) to terminate the
+   `*.tunnel.<domain>` **wildcard** TLS and proxy cleartext to the node. A wildcard
+   cert forces an ACME **DNS-01** challenge (HTTP-01 cannot issue wildcards), so
+   Caddy needs API credentials for your DNS provider.
+2. A **thin edge** puts public traffic onto that companion — a VPS `:443` forward,
+   or a home public IP with a port-forward.
 
----
+`deploy/DEPLOY-namecheap-vps.md` is a concrete, tested recipe (Namecheap DNS-01 +
+Caddy). The long-term option that removes even the companion box is an `acme@1.0`
+device that lets HyperBEAM serve public HTTPS itself.
 
-# Standalone deployment (outside a LapEE)
+## Pointing a node at a provider
 
-Everything below is for path 2 — the `tunnel_broker.erl` launcher. For the
-LapEE-native path, stop here and see [config/README.md](config/README.md) and
-[LAPEE.md](LAPEE.md).
-
-## Requirements
-
-- A host with a public IP.
-- A wildcard DNS record: `*.tunnel.example.com` → that host.
-- A **wildcard TLS certificate**, which means an ACME **DNS-01** challenge
-  (HTTP-01 cannot issue wildcards). The included `Caddyfile` does this.
-- A HyperBEAM runtime (BEAM files + the preloaded device store). Any HyperBEAM
-  release works; you can also lift the one out of an AndEE APK
-  (`assets/andee-runtime.zip`).
-
-## Install
+Any node with the `tunnel@1.0` device can attach at runtime — no rebuild:
 
 ```sh
-git clone <this repo> /opt/tunnel-broker
-cd /opt/tunnel-broker
-
-# Provide a HyperBEAM runtime (contains erlang/<abi>/lib/... and the
-# preloaded device store). Either unpack a release, or:
-#   unzip andee-runtime.zip -d /opt/tunnel-broker/runtime
-export HB_RUNTIME=/opt/tunnel-broker/runtime
-
-./run.sh
-```
-
-`run.sh` compiles `src/` against the runtime and starts the broker. On first
-run it creates `broker-wallet.json` — the broker's own stable identity. Keep it;
-delete it and the broker gets a new identity (this does not change your nodes'
-public URLs, which derive from *their* addresses, not the broker's).
-
-> **The preloaded device store is required.** It is how a HyperBEAM node
-> resolves its codecs. Without it the broker starts, binds, and then hangs on
-> the first request while it tries to resolve `httpsig@1.0` over the network.
-> If you see that, `HB_RUNTIME` is wrong or incomplete.
-
-### Standalone launcher config — `standalone/broker.json`
-
-This file exists only for the standalone launcher. A LapEE does **not** use it —
-it supplies these keys itself. (Do not confuse it with the merge fragments in
-`config/`, which are keys you add to a real node config.)
-
-```json
-{
-  "port": 9080,
-  "wallet": "broker-wallet.json",
-  "store": [
-    { "store-module": "hb_store_volatile", "name": "tunnel-broker-store" }
-  ]
-}
-```
-
-- `port` — where the broker listens. Keep it on loopback and put TLS in front.
-- `wallet` — path to the broker's keyfile, or `"ephemeral"` for a throwaway key.
-
-### TLS and DNS
-
-Edit `Caddyfile` (domain, DNS provider, API token) and run Caddy with the
-provider plugin built in:
-
-```sh
-xcaddy build --with github.com/caddy-dns/cloudflare
-CLOUDFLARE_API_TOKEN=... caddy run
-```
-
-The proxy must allow long-held requests: registrations are held open for ~45s.
-The provided config sets generous timeouts and disables response buffering.
-
-### As a service
-
-`deploy/tunnel-broker.service` (systemd) and `deploy/tunnel-broker.initd`
-(OpenRC) are included. Both expect the install at `/opt/tunnel-broker` with
-`HB_RUNTIME` set; adjust to taste.
-
-## Pointing a node at your broker
-
-Any HyperBEAM node with the `tunnel@1.0` device can connect at runtime — no
-rebuild, no restart:
-
-```sh
-curl -X POST http://<your-node>:8734/~tunnel@1.0/connect \
+curl -X POST http://<node>:8734/~tunnel@1.0/connect \
   -H 'content-type: application/json' \
   -d '{"peer":"https://tunnel.example.com","workers":3}'
 ```
 
-To make it automatic, add a `start` hook to the node's config:
-
-```json
-{
-  "on": {
-    "start": [
-      {
-        "device": "tunnel@1.0",
-        "method": "POST",
-        "path": "connect",
-        "peer": "https://tunnel.example.com",
-        "workers": 3,
-        "hook": { "result": "ignore" }
-      }
-    ]
-  }
-}
-```
-
-**Use 3 or more workers.** A worker is consumed while it executes a request, so
-a single worker leaves the tunnel unavailable for the duration of every request.
-With several, the tunnel stays continuously answerable. The broker also
-grace-queues requests for an address that registered recently, so a brief gap
-between long-polls never surfaces as an error to the public caller.
-
-The node's public hostname is `base32(address)` — lowercase, unpadded — as the
-first label under your domain. Compute it with:
-
-```sh
-python3 -c "
-import base64,sys
-raw = base64.urlsafe_b64decode(sys.argv[1] + '=')
-print(base64.b32encode(raw).decode().lower().rstrip('='))" <node-address>
-```
-
-Note that a node with an ephemeral (session) wallet gets a new address, and
-therefore a new public hostname, every time it restarts.
+**Use 3+ workers** — a worker is consumed while it executes a request, so several
+keep the tunnel continuously answerable; the provider also grace-queues requests
+for a recently-registered address so a brief gap never surfaces to the caller. To
+make it automatic, merge `config/tunnel-client.fragment.json`. The node's public
+hostname is `base32(address)` (lowercase, unpadded) under the provider's domain;
+a node with an ephemeral wallet gets a new hostname each restart.
 
 ## Verifying
 
-`test/broker_driver.erl` starts a tunnelled node, connects it to a running
-broker, and compares public requests (routed **only** by Host header) against
-direct requests to the node:
+- `test/stock_broker_proof.erl` — stock node + device + `on/request` config =
+  broker; Host-routed public requests are byte-identical to direct.
+- `test/merge_proof.erl` — same, with `on/request = [manifest@1.0, tunnel@1.0]`,
+  proving the tunnel routes even when it is not the first request hook.
+- `test/broker_driver.erl` — drives a live provider process end to end.
 
 ```
-== broker parity (public traffic routed by Host only) ==
 /~meta@1.0/info/address            MATCH
-/                                  MATCH        (307 + Location preserved)
-/~hyperbuddy@1.0/index             MATCH        (2,285 B text/html)
-/~hyperbuddy@1.0/bundle.js         MATCH        (4,230,990 B text/javascript)
-
+/                                  MATCH   (307 + Location preserved)
+/~hyperbuddy@1.0/index             MATCH   (2,285 B text/html)
+/~hyperbuddy@1.0/bundle.js         MATCH   (4,230,990 B text/javascript)
 ALL MATCH
 ```
-
-`MATCH` means identical status, identical body bytes, and identical `location`
-and `content-type`.
 
 ## Operational notes
 
 - **Fault containment.** A request that cannot be forwarded fails only its own
-  caller; the worker registration is returned to the pool and the broker keeps
-  serving every other node. A node that dies mid-request does not wedge the
-  broker.
-- **Observability.** `GET /~tunnel@1.0/status` (with
-  `Accept: application/json`) reports registered addresses, pending requests and
-  open registrations.
-- **Exposure.** Any node that registers becomes publicly reachable at its
-  address's hostname. The broker does not authenticate registrations, so an open
-  broker is an open relay for anyone who knows it. If that is not what you want,
-  put an allowlist of node addresses in front of `/~tunnel@1.0/register`, or
-  firewall the registration endpoint to known clients.
-- **Ephemeral wallets.** If your nodes use session wallets, their public URLs
-  rotate on restart. Persist a wallet on the node if you need a stable URL.
+  caller; the registration returns to the pool and the provider keeps serving
+  every other node.
+- **Observability.** `GET /~tunnel@1.0/status` (Accept: application/json) reports
+  registered addresses, pending requests, and open registrations.
+- **Exposure.** The provider does not authenticate registrations, so an open
+  provider is an open relay for anyone who knows it. Allowlist node addresses in
+  front of `/~tunnel@1.0/register`, or firewall it, if that is not what you want.
 
 ## Layout
 
 ```
 src/dev_tunnel.erl                    tunnel@1.0 device: request hook, client, envelope
-src/dev_tunnel_server.erl             broker state: registrations, dispatch, fault containment
-config/README.md                      LapEE-native: which keys to merge into a node config
+src/dev_tunnel_server.erl             provider state: registrations, dispatch, fault containment
+config/README.md                      which keys to merge into a node config, with a bundler example
 config/tunnel-provider.fragment.json  on/request hook + trusted-devices pin (merge in)
 config/tunnel-client.fragment.json    on/start connect hook (merge in)
-LAPEE.md                              device+config proof, topology, trust model
-
-standalone/broker.json                config for the standalone launcher only (not LapEE)
-src/tunnel_broker.erl                 standalone launcher (bare erl, outside a LapEE)
-run.sh                                standalone: compile + launch
-Caddyfile                             wildcard TLS + reverse proxy (edge)
-deploy/                               systemd + OpenRC units, VPS deploy recipe
+LAPEE.md                              device+config proof, LapEE topology, trust model
+Caddyfile                             companion-box wildcard TLS (the edge)
+deploy/DEPLOY-namecheap-vps.md        concrete edge recipe (Namecheap DNS-01 + Caddy)
 test/stock_broker_proof.erl           proof: stock node + device + config = broker
-test/broker_driver.erl                end-to-end parity check against a live broker
+test/merge_proof.erl                  proof: tunnel routes as a non-first on/request hook
+test/broker_driver.erl                end-to-end parity check against a live provider
 ```
