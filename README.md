@@ -18,6 +18,17 @@ codes, redirects, content types and bodies of any size all survive the hop —
 verified against a direct LAN request for every path, including a 4.2 MB
 JavaScript bundle and a 307 redirect (see [Verifying](#verifying)).
 
+## Runs inside a LapEE with only device + config
+
+The broker is not a bespoke server — it is a stock HyperBEAM node plus the
+`tunnel@1.0` device and a one-line `on/request` config hook. That means the
+intended production form is a [LapEE](https://permawebos.arweave.net/run)
+(a hardened, attested PermawebOS appliance) acting as the tunnel provider, so the
+provider is not a weaker trust link than the nodes it fronts. See
+[LAPEE.md](LAPEE.md) for the proof (`test/stock_broker_proof.erl`) and the
+recommended topology (LapEE broker + a companion box terminating TLS + a thin
+edge). `src/tunnel_broker.erl` here is only for running outside a LapEE.
+
 ## Why you might want your own
 
 Anyone can point a node at a public broker, and there is no reason that has to

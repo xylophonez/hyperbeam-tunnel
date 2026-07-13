@@ -1,0 +1,14 @@
+{
+  "on": {
+    "start": [
+      {
+        "device": "tunnel@1.0",
+        "method": "POST",
+        "path": "connect",
+        "peer": "https://tunnel.example.com",
+        "workers": 3,
+        "hook": { "result": "ignore" }
+      }
+    ]
+  }
+}
