@@ -18,7 +18,7 @@ run() ->
         fun(App) -> {ok, _} = application:ensure_all_started(App) end,
         [crypto, public_key, ssl, inets, ranch, cowboy, gun, elmdb]
     ),
-    {ok, BrokerAddr} = tunnel_broker:start(<<"config/broker.json">>),
+    {ok, BrokerAddr} = tunnel_broker:start(<<"standalone/broker.json">>),
     BrokerPort = broker_port(),
     io:format("broker up on ~p as ~s~n", [BrokerPort, BrokerAddr]),
 
@@ -94,7 +94,7 @@ verdict(_, Err) ->
     iolist_to_binary(io_lib:format("ERR ~p", [Err])).
 
 broker_port() ->
-    {ok, Bin} = file:read_file(<<"config/broker.json">>),
+    {ok, Bin} = file:read_file(<<"standalone/broker.json">>),
     hb_util:int(maps:get(<<"port">>, hb_json:decode(Bin), 8080)).
 
 seed_devices() ->

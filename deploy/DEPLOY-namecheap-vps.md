@@ -41,7 +41,7 @@ Run it under Docker with the preloaded store wired in:
       erlang:28.5 erl -noshell \
         $(for d in runtime/lib/*/ebin; do printf -- '-pa /opt/tunnel-broker/%s ' $d; done) \
         -pa /opt/tunnel-broker/ebin \
-        -eval 'tunnel_broker:start(<<"config/broker.json">>), receive stop -> ok end.'
+        -eval 'tunnel_broker:start(<<"standalone/broker.json">>), receive stop -> ok end.'
 
 `deploy/tunnel-broker.service` wraps this as systemd. The broker listens on
 `127.0.0.1:9080` (or your configured port); keep it on loopback and let Caddy

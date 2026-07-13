@@ -16,7 +16,7 @@
 
 -export([start/0, start/1, main/1]).
 
--define(DEFAULT_CONFIG, <<"config/broker.json">>).
+-define(DEFAULT_CONFIG, <<"standalone/broker.json">>).
 -define(DEFAULT_PORT, 8080).
 -define(DEFAULT_WALLET, <<"broker-wallet.json">>).
 

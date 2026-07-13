@@ -43,10 +43,12 @@ all routing (Host `<b32>.<domain>` decoding lives *in* the device), registration
 dispatch, the inline request/response envelope, fault containment, and the client
 side. Ships in the device package like the bundler device package.
 
-**Config** (hotloadable): role selection is pure config —
-`config/broker-role.json` (`on/request`) makes a node a broker;
-`config/client-role.json` (`on/start` connect) makes a node publish itself. A
-`trusted-devices` pin selects the implementation.
+**Config** (hotloadable, merged into the node's own config — not a separate
+file): role selection is pure config. `config/tunnel-provider.fragment.json`
+gives the `on/request` keys that make a node a broker;
+`config/tunnel-client.fragment.json` gives the `on/start` connect keys that make
+a node publish itself; a `trusted-devices` pin selects the implementation. See
+`config/README.md` for how they merge into an existing (e.g. bundler) config.
 
 **Neither** (must live outside the LapEE): **public TLS termination + wildcard
 certificate issuance.** HyperBEAM serves cleartext (`cowboy:start_clear`); it does
@@ -63,7 +65,7 @@ not specific to tunnelling.
    │ edge:    │   │ companion box  │        │ LapEE               │
    │ VPS fwd  │──▶│ Caddy: wildcard│───────▶│ HyperBEAM broker    │
    │  OR home │   │ TLS terminate  │ cleartext  (tunnel@1.0       │
-   │ public IP│   │ (*.tunnel.dom) │  :9080 │   + broker-role cfg)│
+   │ public IP│   │ (*.tunnel.dom) │  :9080 │   + provider cfg) │
    └──────────┘   └────────────────┘        └──────────┬──────────┘
                                                         │ long-poll
                                             ┌───────────┴──────────┐
@@ -72,7 +74,7 @@ not specific to tunnelling.
                                             └──────────────────────┘
 ```
 
-- The **LapEE** runs only HyperBEAM (device + `broker-role.json`), cleartext on
+- The **LapEE** runs only HyperBEAM (device + merged `on/request` keys), cleartext on
   loopback/LAN. Nothing else installed on it. Its trust properties are intact.
 - A **companion box on the LAN** attaches the wildcard-TLS front (the `Caddyfile`
   in this repo). It is not part of the LapEE trust boundary; it is the edge.

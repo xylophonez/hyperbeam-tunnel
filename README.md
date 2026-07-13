@@ -18,16 +18,30 @@ codes, redirects, content types and bodies of any size all survive the hop —
 verified against a direct LAN request for every path, including a 4.2 MB
 JavaScript bundle and a 307 redirect (see [Verifying](#verifying)).
 
-## Runs inside a LapEE with only device + config
+## Two ways to run — pick one
 
-The broker is not a bespoke server — it is a stock HyperBEAM node plus the
-`tunnel@1.0` device and a one-line `on/request` config hook. That means the
-intended production form is a [LapEE](https://permawebos.arweave.net/run)
-(a hardened, attested PermawebOS appliance) acting as the tunnel provider, so the
-provider is not a weaker trust link than the nodes it fronts. See
-[LAPEE.md](LAPEE.md) for the proof (`test/stock_broker_proof.erl`) and the
-recommended topology (LapEE broker + a companion box terminating TLS + a thin
-edge). `src/tunnel_broker.erl` here is only for running outside a LapEE.
+The broker is not a bespoke server. It is a stock HyperBEAM node plus the
+`tunnel@1.0` device and a one-line `on/request` config hook. So there are two
+deployments, and they do **not** share a config file:
+
+1. **Inside a LapEE / an existing HyperBEAM node (recommended, LapEE-native).**
+   You add the `tunnel@1.0` device to the node's device package and **merge a few
+   keys into the node's own config** (e.g. append them to a bundler config). There
+   is no separate config file and no launcher — the appliance's own bootstrap runs
+   it. This is the production form: a [LapEE](https://permawebos.arweave.net/run)
+   (hardened, attested PermawebOS appliance) as the tunnel provider, so the
+   provider is not a weaker trust link than the nodes it fronts. See
+   **[config/README.md](config/README.md)** for the exact keys to merge and a
+   worked bundler example, and **[LAPEE.md](LAPEE.md)** for the proof
+   (`test/stock_broker_proof.erl`) and topology (LapEE broker + a companion box
+   terminating TLS + a thin edge).
+
+2. **Standalone, outside a LapEE (convenience).** A bare `erl` process driven by
+   `src/tunnel_broker.erl` + `standalone/broker.json`. This is the only path that
+   uses a whole standalone config file (with launcher keys like `port`/`wallet`/
+   `store` that a LapEE would otherwise supply). The rest of this README covers it.
+
+Both run the identical `tunnel@1.0` device; only the way it is launched differs.
 
 ## Why you might want your own
 
@@ -84,6 +98,14 @@ can ingest a full envelope. Brokers that cannot simply never set it, and nodes
 fall back to returning a plain body — so a node speaking this protocol still
 works against a less capable broker.
 
+---
+
+# Standalone deployment (outside a LapEE)
+
+Everything below is for path 2 — the `tunnel_broker.erl` launcher. For the
+LapEE-native path, stop here and see [config/README.md](config/README.md) and
+[LAPEE.md](LAPEE.md).
+
 ## Requirements
 
 - A host with a public IP.
@@ -118,11 +140,15 @@ public URLs, which derive from *their* addresses, not the broker's).
 > the first request while it tries to resolve `httpsig@1.0` over the network.
 > If you see that, `HB_RUNTIME` is wrong or incomplete.
 
-### Configuration — `config/broker.json`
+### Standalone launcher config — `standalone/broker.json`
+
+This file exists only for the standalone launcher. A LapEE does **not** use it —
+it supplies these keys itself. (Do not confuse it with the merge fragments in
+`config/`, which are keys you add to a real node config.)
 
 ```json
 {
-  "port": 8080,
+  "port": 9080,
   "wallet": "broker-wallet.json",
   "store": [
     { "store-module": "hb_store_volatile", "name": "tunnel-broker-store" }
@@ -240,12 +266,18 @@ and `content-type`.
 ## Layout
 
 ```
-src/tunnel_broker.erl       broker bootstrap (config, wallet, node start)
-src/dev_tunnel.erl          tunnel@1.0 device: request hook, client, envelope
-src/dev_tunnel_server.erl   broker state: registrations, dispatch, fault containment
-config/broker.json          broker config
-Caddyfile                   wildcard TLS + reverse proxy
-deploy/                     systemd + OpenRC units
-test/broker_driver.erl      end-to-end parity check against a live broker
-run.sh                      compile + launch
+src/dev_tunnel.erl                    tunnel@1.0 device: request hook, client, envelope
+src/dev_tunnel_server.erl             broker state: registrations, dispatch, fault containment
+config/README.md                      LapEE-native: which keys to merge into a node config
+config/tunnel-provider.fragment.json  on/request hook + trusted-devices pin (merge in)
+config/tunnel-client.fragment.json    on/start connect hook (merge in)
+LAPEE.md                              device+config proof, topology, trust model
+
+standalone/broker.json                config for the standalone launcher only (not LapEE)
+src/tunnel_broker.erl                 standalone launcher (bare erl, outside a LapEE)
+run.sh                                standalone: compile + launch
+Caddyfile                             wildcard TLS + reverse proxy (edge)
+deploy/                               systemd + OpenRC units, VPS deploy recipe
+test/stock_broker_proof.erl           proof: stock node + device + config = broker
+test/broker_driver.erl                end-to-end parity check against a live broker
 ```

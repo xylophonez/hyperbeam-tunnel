@@ -1,0 +1,14 @@
+{
+  "_note": "MERGE these keys into your node/LapEE config (e.g. bundler config); do not use as a standalone file. See config/README.md. Replace <published-tunnel-impl-id> with the pinned tunnel@1.0 implementation ID.",
+  "on": {
+    "request": [
+      {
+        "device": "tunnel@1.0",
+        "path": "request"
+      }
+    ]
+  },
+  "trusted-devices": {
+    "tunnel@1.0": "<published-tunnel-impl-id>"
+  }
+}

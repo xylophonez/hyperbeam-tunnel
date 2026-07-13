@@ -12,7 +12,7 @@
 #      built from this repo's rebar.config (see README "Build from source").
 #
 # Usage:
-#   ./run.sh                      # uses config/broker.json
+#   ./run.sh                      # uses standalone/broker.json
 #   BROKER_CONFIG=my.json ./run.sh
 #   HB_RUNTIME=/path/to/runtime ./run.sh
 set -euo pipefail
@@ -20,7 +20,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
-CONFIG="${BROKER_CONFIG:-config/broker.json}"
+CONFIG="${BROKER_CONFIG:-standalone/broker.json}"
 ABI="${HB_ABI:-x86_64}"
 
 find_erl() {

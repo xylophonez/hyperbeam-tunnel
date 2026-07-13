@@ -1,7 +1,0 @@
-{
-  "on": {
-    "request": [
-      { "device": "tunnel@1.0", "path": "request" }
-    ]
-  }
-}
